@@ -1,0 +1,5 @@
+node_modules/
+.env
+temp/
+Backend_Implementation_Flow.md
+RCE_Engine_PRD.md
