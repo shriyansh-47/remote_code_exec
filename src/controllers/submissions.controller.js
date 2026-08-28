@@ -3,6 +3,7 @@ import { createTempFolder , clearFolder } from '../utils/fileManager.js'
 import { exec } from 'child_process'
 import util from 'util'
 import path from 'path'
+import { asyncHandler } from '../utils/asyncHandler.js'
 
 const execPromise = util.promisify(exec)
 // converting it to a promise to prevent callback usage
@@ -10,7 +11,7 @@ const execPromise = util.promisify(exec)
 // exec() executes a command in an invisible child terminal
 // and gives you the command's output (stdout), errors (stderr).
 
-const submitCode = async (request, response) => {
+const submitCode = asyncHandler( async (request, response) => {
     const {language , srcCode} = request.body
 
     if(!language || !srcCode){
@@ -108,6 +109,6 @@ const submitCode = async (request, response) => {
             stderr: error.stderr || error.message
         })
     }
-}
+})
 
 export {submitCode}
