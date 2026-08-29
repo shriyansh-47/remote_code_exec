@@ -25,7 +25,7 @@ const addJobToQueue = async (jobID, language, srcCode) =>{
     
 }
 
-// no error handling since Error-Bubling will be used and the error
+// no error handling since Error-Bubbling will be used and the error
 // will be caught by asyncHandler in submitCode controller.
 export {addJobToQueue}
 
