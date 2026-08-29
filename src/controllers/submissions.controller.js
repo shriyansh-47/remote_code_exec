@@ -1,7 +1,8 @@
 import {v4 as uuidv4} from 'uuid'
-import { addJobToQueue } from '../queues/producer'
+import { addJobToQueue, getJobById } from '../queues/producer'
 import { asyncHandler } from '../utils/asyncHandler'
 import {apiError} from '../utils/apiError.js' 
+
 
 const submitCode = asyncHandler( async (request,response) => {
     const {language , srcCode} = request.body
@@ -22,5 +23,49 @@ const submitCode = asyncHandler( async (request,response) => {
         status : "QUEUED"
     })
 })
+// Splitting submission controller into POST & GET
+// POST -> adds a client submitted job into the queue and then breaks the HTTP
+// connection (returning response before job is completed)
 
-export {submitCode}
+// This separates fast HTTP/request handling from slow background work.
+// It prevents multiple HTTP requests from staying open on the Express server
+// for the entire duration of code compilation, execution & output processing.
+
+// GET -> once user submits his code, his frontend would keep sending get requests
+// with that JobID and the submission-status-controller would respond back with the status of the job.
+// This is known as Polling where an endpoint is contantly hit with a request
+// until desired result is obtained. This is not efficient and is very resource
+// intensive. More efficient alternative is websockets.
+
+
+const getSubmissionStatus = asyncHandler( async (request, response) => {
+    const jobID = request.params // gets jobID from URL of HTTP request
+    
+    const job = await getJobById(jobID)
+
+    if(!job){
+        throw new apiError(404, "Invalid Job-ID !!")
+    }
+
+    const status = await job.getState() // in-built func of BullMQ to get the state of the job 
+
+    if(status === 'completed'){
+        return response.status(200).json({
+            jobID,
+            status : status.toUpperCase(),
+        })
+    }
+    else if(status === 'failed'){
+        return response.status(200).json({
+            jobID,
+            status : "ERROR"
+        })
+    }
+    else {
+        return response.status(200).json({
+            jobID,
+            status : "PROCESSING"
+        })
+    }
+})
+export {submitCode , getSubmissionStatus}

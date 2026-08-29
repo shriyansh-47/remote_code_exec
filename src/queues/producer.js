@@ -22,11 +22,14 @@ const addJobToQueue = async (jobID, language, srcCode) =>{
 
     console.log(`Job-${jobID} added to the queue`)
     return job
-    
+}
+
+const getJobById = async(jobID) => {
+    return await submissionQueue.getJob(jobID)
 }
 
 // no error handling since Error-Bubbling will be used and the error
 // will be caught by asyncHandler in submitCode controller.
-export {addJobToQueue}
+export {addJobToQueue , getJobById}
 
 
