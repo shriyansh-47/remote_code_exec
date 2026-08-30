@@ -15,15 +15,20 @@ const addJobToQueue = async (jobID, language, srcCode) =>{
         jobID,
         language,
         srcCode
+    },
+    {
+        jobId : jobID // tells BullMQ that internal job.id will
+        // be same as the uuidv4() we created
     })
     // code-execution is the name for the job
     // it adds a json object in the queue like {job-name , job-data}
     // where job-data = {jobID, language, srcCode}
 
-    console.log(`Job-${jobID} added to the queue`)
+    console.log(`Job-${job.id} added to the queue`)
     return job
 }
 
+// job.id == jobID so this is correct
 const getJobById = async(jobID) => {
     return await submissionQueue.getJob(jobID)
 }

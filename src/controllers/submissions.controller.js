@@ -1,6 +1,6 @@
 import {v4 as uuidv4} from 'uuid'
-import { addJobToQueue, getJobById } from '../queues/producer'
-import { asyncHandler } from '../utils/asyncHandler'
+import { addJobToQueue, getJobById } from '../queues/producer.js'
+import { asyncHandler } from '../utils/asyncHandler.js'
 import {apiError} from '../utils/apiError.js' 
 
 
@@ -39,9 +39,9 @@ const submitCode = asyncHandler( async (request,response) => {
 
 
 const getSubmissionStatus = asyncHandler( async (request, response) => {
-    const jobID = request.params // gets jobID from URL of HTTP request
+    const {jobID} = request.params // gets jobID from URL of HTTP request
     
-    const job = await getJobById(jobID)
+    const job = await getJobById(jobID) // returns the BullMQ object job
 
     if(!job){
         throw new apiError(404, "Invalid Job-ID !!")
@@ -53,12 +53,14 @@ const getSubmissionStatus = asyncHandler( async (request, response) => {
         return response.status(200).json({
             jobID,
             status : status.toUpperCase(),
+            result : job.returnvalue // in-built property of a completed BullMQ job object
         })
     }
     else if(status === 'failed'){
         return response.status(200).json({
             jobID,
-            status : "ERROR"
+            status : "ERROR",
+            error : job.failedReason // in-built property of a failed BullMQ job object
         })
     }
     else {
