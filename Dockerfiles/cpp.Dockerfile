@@ -8,7 +8,7 @@ RUN apk add --no-cache g++ libstdc++ util-linux
 RUN adduser -D -u 1729 sandboxed_user
 
 # This tells Docker to run the container not as root
-# but as sandoxed_user
+# but as sandboxed_user
 USER sandboxed_user
 
 # opens a directory named /tmp when the container would run

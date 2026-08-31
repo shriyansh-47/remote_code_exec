@@ -57,10 +57,15 @@ const getSubmissionStatus = asyncHandler( async (request, response) => {
         })
     }
     else if(status === 'failed'){
+        // was sending JSON.stringify() from worker
+        // this parsers back it to JSON format
+        // better for Error-handling since this specifies the
+        // kind of error too.
+        const parsedError = JSON.parse(job.failedReason)
         return response.status(200).json({
             jobID,
-            status : "ERROR",
-            error : job.failedReason // in-built property of a failed BullMQ job object
+            status : parsedError.type,
+            error : parsedError.message
         })
     }
     else {
