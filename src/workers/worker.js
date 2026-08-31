@@ -53,25 +53,102 @@ const worker = new Worker('submission-queue' , async(job)=>{
         await createTempFolder(jobID, language, srcCode)
         const absoluteTempPath = path.join(process.cwd() , 'temp' , jobID)
 
-        let dockerCommand = ''
+        // The code-execution phase is split into 2 parts :-
+        // 1. Compilation Container -> Spin separate container for compilation
+        // this helps in better error handling on Compilation error.
+        // This contianer is not that highly restricted on read only restrictions
+        // & memory usage since compilers create large intermediate and executable files.
+        // Compilation can also be used to compromise a system, using Template Bombing in C++
+        // & Malicious includes to freeze the compiler itself.
+        // Since memory limit cant be imposed so execPromise's timeout property
+        // is used to watch over such malpractices.
 
-        if(language == 'python'){
-            dockerCommand = `docker run --rm -v "${absoluteTempPath}:/workspace" python:3.11-alpine python3 /workspace/Solution.py`
+        // 2. Execution Container -> If compilation success, spin this container
+        // it is heavily restricted sandboxed container.
+
+        let stdout=''
+        let stderr=''
+        if (language === 'cpp' || language === 'java'){
+            let compileCommand=''
+            if(language === 'cpp'){
+                compileCommand = `docker run --rm -v "${absoluteTempPath}:/workspace" rce-sandbox-cpp g++ /workspace/Solution.cpp -o /workspace/execSolution`
+            }
+            else if(language === 'java'){
+                compileCommand = `docker run --rm -v "${absoluteTempPath}:/workspace" rce-sandbox-java javac /workspace/Solution.java -d /workspace`
+                // -d specifies the directory where Solution.class file must be saved after successful compilation
+            }
+
+            try{
+                await execPromise(compileCommand , {timeout : 10000})
+                // even if we are not storing the result in stdout & stderr
+                // if the compilation fails Node itself
+                // attaches the outputs stderr & stdout to the compilationError object
+                // passed in the catch()
+            }catch(compilationError){
+                throw new Error(JSON.stringify({
+                    type:'COMPILATION-ERROR',
+                    message:compilationError.stderr || compilationError.message
+                }))
+                // JSON.stringify() converts the error object into a string.
+                // BullMQ stores Error.message as failedReason in Redis.
+                // Stringifying lets us preserve structured error data (type, message, etc.)
+                // so the Controller can later use JSON.parse() and send it to the frontend.
+            }
         }
-        else if(language == 'cpp'){
-            dockerCommand = `docker run --rm -v "${absoluteTempPath}:/workspace" gcc:latest sh -c "g++ /workspace/Solution.cpp -o /workspace/execSolution && /workspace/execSolution"`
+
+        let executeCommand=''
+        
+        const sandboxRestrictions = `--network none \
+        --read-only \
+        --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+        --user 1729:1729 \
+        --cap-drop=ALL \
+        --security-opt=no-new-privileges \
+        --pids-limit 64 \
+        --memory=256m \
+        --memory-swap=256m -v "${absoluteTempPath}:/workspace:ro"`
+
+        if(language === 'python'){
+            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-python python3 /workspace/Solution.py`
         }
-        else if(language == 'java'){
-            dockerCommand = `docker run --rm -v "${absoluteTempPath}:/workspace" eclipse-temurin:17-jdk-alpine sh -c "javac /workspace/Solution.java -d /workspace && java -cp /workspace Solution"`
+        else if(language === 'cpp'){
+            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-cpp /workspace/execSolution`
+        }
+        else if(language === 'java'){
+            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-java java -cp /workspace Solution`
         }
         else{
-            throw new Error("Language not Supported !!") // apiError class was for HTTP request only
+            throw new Error(JSON.stringify({
+                type:'RUNTIME-ERROR',
+                message:'Language not supported !!'
+            }))
         }
 
-        const {stdout , stderr} = await execPromise(dockerCommand , {timeout : 10000})
+        try{
+            const result = await execPromise(executeCommand , {timeout : 5000})
+            stdout = result.stdout
+            stderr = result.stderr
+        }catch(executionError){
+            if(executionError.killed){
+                throw new Error(JSON.stringify({
+                    type:'TIME-LIMIT-EXCEEDED',
+                    message:'Write a faster code !! (>5sec)'
+                }))
+            }
+            if(executionError.code === 137){
+                throw new Error(JSON.stringify({
+                    type:'MEMORY-LIMIT-EXCEEDED',
+                    message:'Code consumed all my memory !! (>256MB)'
+                }))
+            }
+            throw new Error(JSON.stringify({
+                type:'RUN-TIME-ERROR',
+                message:executionError.stderr || executionError.message
+            }))
+        }
 
         await clearFolder(jobID)
-
+        
         return {stdout, stderr}
         // here BullMQ itslef marks the state of job : completed
         // this return tells BullMQ that the job has been completed
