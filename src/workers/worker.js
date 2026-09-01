@@ -50,8 +50,14 @@ const worker = new Worker('submission-queue' , async(job)=>{
     console.log(`Worker picked the job ${job.id}`)
 
     try{
-        await createTempFolder(jobID, language, srcCode)
-        const absoluteTempPath = path.join(process.cwd() , 'temp' , jobID)
+        // this renames jobFolder ot absoluteTempPath
+        const {jobFolder:absoluteTempPath} = await createTempFolder(jobID, language, srcCode)
+        // const absoluteTempPath = path.join(process.cwd() , 'temp' , jobID)
+        // We were originally ignoring the returned value of createTempFolder,
+        // it was giving correct result because process.cwd() returns \rce
+        // i.e. the directory in which the server started
+        // so rce\temp\jobID gives the correct & intended results.
+        // But this is better.
 
         // The code-execution phase is split into 2 parts :-
         // 1. Compilation Container -> Spin separate container for compilation
