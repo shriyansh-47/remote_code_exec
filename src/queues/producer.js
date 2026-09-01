@@ -14,7 +14,8 @@ const addJobToQueue = async (jobID, language, srcCode) =>{
     const job = await submissionQueue.add("code-execution", {
         jobID,
         language,
-        srcCode
+        srcCode,
+        stdin
     },
     {
         jobId : jobID // tells BullMQ that internal job.id will

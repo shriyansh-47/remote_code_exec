@@ -44,14 +44,14 @@ const execPromise = util.promisify(exec) // converting to a Promise so as to use
 // 'submission-queue' & runs the given processor function whenever a job is available
 // job object passed in the function is provided by BullMQ itself & not the one I returned in producer.js
 const worker = new Worker('submission-queue' , async(job)=>{
-    const {jobID , language, srcCode} = job.data 
+    const {jobID , language, srcCode, stdin} = job.data 
     // .data returns the payload (jobID, language, srcCode) producer stored while adding the job to the queue
 
     console.log(`Worker picked the job ${job.id}`)
 
     try{
         // this renames jobFolder ot absoluteTempPath
-        const {jobFolder:absoluteTempPath} = await createTempFolder(jobID, language, srcCode)
+        const {jobFolder:absoluteTempPath} = await createTempFolder(jobID, language, srcCode, stdin)
         // const absoluteTempPath = path.join(process.cwd() , 'temp' , jobID)
         // We were originally ignoring the returned value of createTempFolder,
         // it was giving correct result because process.cwd() returns \rce

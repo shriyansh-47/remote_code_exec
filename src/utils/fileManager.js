@@ -4,7 +4,7 @@ import path from 'path' // for better working with \ & /
 const tempDirectoryPath = path.join(process.cwd(), 'temp')
 // process.cwd() -> absolute path to the current working directory
 
-const createTempFolder = async (jobID, language, srcCode) => {
+const createTempFolder = async (jobID, language, srcCode, stdin) => {
     // if(!fs.existsSync(tempDirectoryPath)){
     //     fs.mkdirSync(tempDirectoryPath)
     // }
@@ -29,9 +29,14 @@ const createTempFolder = async (jobID, language, srcCode) => {
     // fs.writeFileSync(filePath , srcCode)
     await fs.writeFile(filePath , srcCode)
 
+    // writing the input to /temp/jobID/input.txt
+    const inputPath=path.join(jobFolder,'input.txt')
+    await fs.writeFile(inputPath,stdin)
+
     return {
         jobFolder,
-        filePath
+        filePath,
+        inputPath
     }
 }
 

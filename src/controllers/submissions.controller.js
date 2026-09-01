@@ -5,7 +5,8 @@ import {apiError} from '../utils/apiError.js'
 
 
 const submitCode = asyncHandler( async (request,response) => {
-    const {language , srcCode} = request.body
+    const {language , srcCode, stdin=''} = request.body
+    // stdin defaults to empty string if code requires no inputs from user
 
     if(!language){
         throw new apiError(400, "Langauge not specified !!")
@@ -16,7 +17,7 @@ const submitCode = asyncHandler( async (request,response) => {
 
     const jobID = uuidv4()
 
-    await addJobToQueue(jobID, language, srcCode)
+    await addJobToQueue(jobID, language, srcCode, stdin)
 
     return response.status(202).json({
         jobID,
