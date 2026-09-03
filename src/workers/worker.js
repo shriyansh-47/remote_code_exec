@@ -4,6 +4,7 @@ import {createTempFolder, clearFolder} from '../utils/fileManager.js'
 import {exec} from 'child_process' // lets Node run shell commands
 import util from 'util'
 import path from 'path'
+import { executorContainer } from '../engine/executor.js'
 
 /*
 This is the flow of a job till now in Phase-2 :-
@@ -131,26 +132,12 @@ const worker = new Worker('submission-queue' , async(job)=>{
         }
 
         try{
-            const result = await execPromise(executeCommand , {timeout : 5000})
+            const inputPath = path.join(absoluteTempPath,'input.txt')
+            const result = await executorContainer(executeCommand , inputPath)
             stdout = result.stdout
             stderr = result.stderr
         }catch(executionError){
-            if(executionError.killed){
-                throw new Error(JSON.stringify({
-                    type:'TIME-LIMIT-EXCEEDED',
-                    message:'Write a faster code !! (>5sec)'
-                }))
-            }
-            if(executionError.code === 137){
-                throw new Error(JSON.stringify({
-                    type:'MEMORY-LIMIT-EXCEEDED',
-                    message:'Code consumed all my memory !! (>256MB)'
-                }))
-            }
-            throw new Error(JSON.stringify({
-                type:'RUN-TIME-ERROR',
-                message:executionError.stderr || executionError.message
-            }))
+            throw new Error(JSON.stringify(executionError))
         }
 
         await clearFolder(jobID)
