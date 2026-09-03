@@ -5,6 +5,7 @@ import {exec} from 'child_process' // lets Node run shell commands
 import util from 'util'
 import path from 'path'
 import { executorContainer } from '../engine/executor.js'
+import { parseMetrics } from '../engine/metrics.js' 
 
 /*
 This is the flow of a job till now in Phase-2 :-
@@ -105,7 +106,7 @@ const worker = new Worker('submission-queue' , async(job)=>{
 
         let executeCommand=''
         
-        const sandboxRestrictions = `--network none \
+        const sandboxRestrictions = `-i --network none \
         --read-only \
         --tmpfs /tmp:rw,noexec,nosuid,size=64m \
         --user 1729:1729 \
@@ -116,6 +117,9 @@ const worker = new Worker('submission-queue' , async(job)=>{
         --memory-swap=256m -v "${absoluteTempPath}:/workspace:rw"`
         // :ro(read-only) changed to :rw(read-write) so that the Docker Container
         // can write back a file on the Host OS.
+
+        // By default Docker runs containers with their stdin stream closed
+        // -i signals docker to open it up for spawn to create pipe data in it.
 
 
         
@@ -174,10 +178,19 @@ const worker = new Worker('submission-queue' , async(job)=>{
             throw new Error(JSON.stringify(executionError))
         }
 
+        // Parsing the metrics recorded after successful code execution
+        const metricsFilePath = path.join(absoluteTempPath , 'metrics.txt')
+        const {executionTime, memoryUsage} = await parseMetrics(metricsFilePath)
+
         await clearFolder(jobID)
         
-        return {stdout, stderr}
-        // here BullMQ itslef marks the state of job : completed
+        return {
+            stdout,
+            stderr,
+            executionTime,
+            memoryUsage
+        }
+        // here BullMQ itself marks the state of job : completed
         // this return tells BullMQ that the job has been completed
         // and BullMQ stores the returned data Redis as
         // {

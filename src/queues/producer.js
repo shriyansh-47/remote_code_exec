@@ -8,7 +8,7 @@ const submissionQueue = new Queue('submission-queue' , {
 // names a section (BullMQ queue) inside the redis db (BullMQ uses redis data-struct to manage the queue)
 // where new jobs will be added and pending would be fetched from.
 
-const addJobToQueue = async (jobID, language, srcCode) =>{
+const addJobToQueue = async (jobID, language, srcCode, stdin) =>{
     // .add() returns metadata about the queue object like timestamp of addition,
     // payload data, internal ID, etc.
     const job = await submissionQueue.add("code-execution", {
