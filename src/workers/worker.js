@@ -113,16 +113,50 @@ const worker = new Worker('submission-queue' , async(job)=>{
         --security-opt=no-new-privileges \
         --pids-limit 64 \
         --memory=256m \
-        --memory-swap=256m -v "${absoluteTempPath}:/workspace:ro"`
+        --memory-swap=256m -v "${absoluteTempPath}:/workspace:rw"`
+        // :ro(read-only) changed to :rw(read-write) so that the Docker Container
+        // can write back a file on the Host OS.
 
+
+        
+        // Some Explanations on mounting of dirs :-
+        // -v "${absoluteTempPath}:/workspace:rw" creates a bind mount:
+        //
+        // ${absoluteTempPath} -> directory on the Host OS
+        // /workspace          -> corresponding directory inside the container
+        // rw                  -> read + write access
+        //
+        // Both paths refer to the same underlying files.
+        // Therefore, changes made inside /workspace are reflected in the Host directory,
+        // and changes made in the Host directory are visible inside /workspace.
+        //
+        // Example:
+        // Host:      absoluteTempPath/Solution.cpp
+        // Container: /workspace/Solution.cpp
+        //
+        // If the container creates /workspace/metrics.txt,
+        // it will also appear in absoluteTempPath/metrics.txt on the Host.
+
+
+
+        // /usr/bin/time -f "%e %M" -o /workspace/metrics.txt program_that_need_metric_measurements
+        // This writes the elapsed-time(%e) and max-memory(%M) to a file metrics.txt on the Host OS
+        // /usr/bin/time is an executable from GNU time utility, /usr/bin/time is itself a program 
+        // that runs another program and measures how much time and memory that program uses.
+        // -f -> means formating
+        // %e -> means elapsed time in seconds / wall-clock time
+        // %M -> means the Maximum Resident Set Size used by the process (in KB)
+        // -o -> means write the measurements to a specified file and not the terminal
+        // Since /workspace is bind-mounted to the host, the file is
+        // also available on the Host OS.
         if(language === 'python'){
-            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-python python3 /workspace/Solution.py`
+            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-python /usr/bin/time -f "%e %M" -o /workspace/metrics.txt python3 /workspace/Solution.py`
         }
         else if(language === 'cpp'){
-            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-cpp /workspace/execSolution`
+            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-cpp /usr/bin/time -f "%e %M" -o /workspace/metrics.txt /workspace/execSolution`
         }
         else if(language === 'java'){
-            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-java java -cp /workspace Solution`
+            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-java /usr/bin/time -f "%e %M" -o /workspace/metrics.txt java -cp /workspace Solution`
         }
         else{
             throw new Error(JSON.stringify({
