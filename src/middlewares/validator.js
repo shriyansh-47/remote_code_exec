@@ -5,10 +5,7 @@ import {apiError} from '../utils/apiError.js'
 // having fields language, srcCode, stdin(optional)
 const submissionSchema = z.object({
     language : z.enum(['python','cpp','java'] , {
-        // errorMap() lets us give custom messages to validation fails
-        errorMap: () => ({
-            message:'Language not supported !!'
-        })
+        message: 'Language not supported !!'
     }),
     
     srcCode: z.string() // means srcCode must be a string
