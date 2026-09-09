@@ -6,6 +6,6 @@ import { validateSubmission } from '../middlewares/validator.js'
 const router = Router()
 
 router.route('/submissions').post(apiRateLimiter, validateSubmission, submitCode)
-router.route('/submissions/:jobID').get(apiRateLimiter, getSubmissionStatus)
+router.route('/submissions/:jobID').get(getSubmissionStatus)
 
 export default router

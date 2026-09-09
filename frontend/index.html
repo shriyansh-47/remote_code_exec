@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Barebones RCE</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .toolbar { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+        #editor { width: 100%; height: 400px; border: 1px solid #ccc; margin-bottom: 10px; }
+        .io-container { display: flex; gap: 10px; }
+        .io-box { flex: 1; display: flex; flex-direction: column; }
+        textarea { width: 100%; height: 150px; font-family: monospace; resize: vertical; padding: 10px; border: 1px solid #ccc; }
+        button { padding: 5px 15px; cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+    <h2>Remote Code Execution Engine</h2>
+    
+    <div class="toolbar">
+        <select id="languageSelect">
+            <option value="cpp">C++</option>
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+        </select>
+        <button id="runBtn" onclick="runCode()">Run Code</button>
+        <span id="statusText" style="font-weight: bold; color: #555;"></span>
+    </div>
+
+    <!-- Monaco Editor Container -->
+    <div id="editor"></div>
+
+    <div class="io-container">
+        <div class="io-box">
+            <label><strong>Input (stdin)</strong></label>
+            <textarea id="stdin" placeholder="Enter standard input here..."></textarea>
+        </div>
+        <div class="io-box">
+            <label><strong>Output (stdout)</strong></label>
+            <textarea id="stdout" readonly placeholder="Output will appear here..."></textarea>
+        </div>
+    </div>
+
+    <!-- Load Monaco Editor via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <script>
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
+        let editorInstance;
+
+        // Initialize Monaco Editor
+        require(['vs/editor/editor.main'], function () {
+            editorInstance = monaco.editor.create(document.getElementById('editor'), {
+                value: '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello World!" << endl;\n    return 0;\n}',
+                language: 'cpp',
+                theme: 'vs-light'
+            });
+
+            // Update editor language when dropdown changes
+            document.getElementById('languageSelect').addEventListener('change', (e) => {
+                let lang = e.target.value;
+                monaco.editor.setModelLanguage(editorInstance.getModel(), lang);
+                
+                // Add some default boilerplate
+                if (lang === 'python') editorInstance.setValue('print("Hello World!")');
+                if (lang === 'cpp') editorInstance.setValue('#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello World!" << endl;\n    return 0;\n}');
+                if (lang === 'java') editorInstance.setValue('class Solution {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}');
+            });
+        });
+
+        // Run Code & Long Polling Logic
+        async function runCode() {
+            const runBtn = document.getElementById('runBtn');
+            const statusText = document.getElementById('statusText');
+            const stdoutBox = document.getElementById('stdout');
+            
+            // Disable button and update UI
+            runBtn.disabled = true;
+            runBtn.innerText = "Running...";
+            statusText.innerText = "Submitting code...";
+            stdoutBox.value = "";
+
+            const srcCode = editorInstance.getValue();
+            const language = document.getElementById('languageSelect').value;
+            const stdin = document.getElementById('stdin').value;
+
+            try {
+                // 1. Submit Code to Backend
+                const response = await fetch('http://localhost:3000/api/v1/submissions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ language, srcCode, stdin })
+                });
+
+                const data = await response.json();
+
+                if (response.status !== 202) {
+                    stdoutBox.value = data.message || "Failed to submit code";
+                    resetButton();
+                    return;
+                }
+
+                const jobID = data.jobID;
+                statusText.innerText = `Job ID: ${jobID} - PENDING...`;
+
+                // 2. Long Polling Loop (Check every 1 second)
+                const pollInterval = setInterval(async () => {
+                    const statusRes = await fetch(`http://localhost:3000/api/v1/submissions/${jobID}`);
+                    const statusData = await statusRes.json();
+
+                    statusText.innerText = `Status: ${statusData.status}`;
+
+                    // If job is finished, stop polling and show results
+                    if (statusData.status === 'COMPLETED' || statusData.status === 'RUNTIME-ERROR' || statusData.status === 'TIME-LIMIT-EXCEEDED') {
+                        clearInterval(pollInterval);
+                        
+                        if (statusData.status === 'COMPLETED') {
+                            stdoutBox.value = statusData.result.stdout;
+                            if (statusData.result.stderr) {
+                                stdoutBox.value += "\n[STDERR]:\n" + statusData.result.stderr;
+                            }
+                            stdoutBox.value += `\n\n[Time: ${statusData.result.executionTime}ms | Memory: ${statusData.result.memoryUsage}KB]`;
+                        } else {
+                            // Print the runtime error
+                            stdoutBox.value = statusData.error || statusData.message;
+                        }
+                        resetButton();
+                    }
+                }, 200); 
+
+            } catch (err) {
+                stdoutBox.value = "Failed to connect to backend. Is the Express server running on port 3000?";
+                resetButton();
+            }
+
+            function resetButton() {
+                runBtn.disabled = false;
+                runBtn.innerText = "Run Code";
+            }
+        }
+    </script>
+</body>
+</html>

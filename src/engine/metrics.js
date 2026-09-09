@@ -9,8 +9,8 @@ const parseMetrics = async (metricsFilePath) => {
         const memoryKB = parseInt(memory, 10)
 
         return {
-            executionTime : timeSec,
-            memoryUsage : memoryKB / 1024 
+            executionTime : timeSec * 1000,
+            memoryUsage : memoryKB
         }
     }catch(error){
         return{
