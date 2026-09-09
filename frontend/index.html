@@ -111,7 +111,8 @@
                     statusText.innerText = `Status: ${statusData.status}`;
 
                     // If job is finished, stop polling and show results
-                    if (statusData.status === 'COMPLETED' || statusData.status === 'RUNTIME-ERROR' || statusData.status === 'TIME-LIMIT-EXCEEDED') {
+                    const terminalStates = ['COMPLETED', 'RUNTIME-ERROR', 'TIME-LIMIT-EXCEEDED', 'MEMORY-LIMIT-EXCEEDED', 'COMPILATION-ERROR'];
+                    if (terminalStates.includes(statusData.status)) {
                         clearInterval(pollInterval);
                         
                         if (statusData.status === 'COMPLETED') {

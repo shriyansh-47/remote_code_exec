@@ -79,10 +79,10 @@ const worker = new Worker('submission-queue' , async(job)=>{
         if (language === 'cpp' || language === 'java'){
             let compileCommand=''
             if(language === 'cpp'){
-                compileCommand = `docker run --rm -v "${absoluteTempPath}:/workspace" rce-sandbox-cpp g++ /workspace/Solution.cpp -o /workspace/execSolution`
+                compileCommand = `docker run --rm --name rce-compile-${jobID} -v "${absoluteTempPath}:/workspace" rce-sandbox-cpp g++ /workspace/Solution.cpp -o /workspace/execSolution`
             }
             else if(language === 'java'){
-                compileCommand = `docker run --rm -v "${absoluteTempPath}:/workspace" rce-sandbox-java javac /workspace/Solution.java -d /workspace`
+                compileCommand = `docker run --rm --name rce-compile-${jobID} -v "${absoluteTempPath}:/workspace" rce-sandbox-java javac /workspace/Solution.java -d /workspace`
                 // -d specifies the directory where Solution.class file must be saved after successful compilation
             }
 
@@ -93,6 +93,9 @@ const worker = new Worker('submission-queue' , async(job)=>{
                 // attaches the outputs stderr & stdout to the compilationError object
                 // passed in the catch()
             }catch(compilationError){
+                // Force kill the compile container in case it hung (e.g. C++ template bomb)
+                await execPromise(`docker rm -f rce-compile-${jobID}`).catch(() => {})
+
                 throw new Error(JSON.stringify({
                     type:'COMPILATION-ERROR',
                     message:compilationError.stderr || compilationError.message
@@ -154,13 +157,13 @@ const worker = new Worker('submission-queue' , async(job)=>{
         // Since /workspace is bind-mounted to the host, the file is
         // also available on the Host OS.
         if(language === 'python'){
-            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-python /usr/bin/time -f "%e %M" -o /workspace/metrics.txt python3 /workspace/Solution.py`
+            executeCommand = `docker run --rm --name rce-${jobID} ${sandboxRestrictions} rce-sandbox-python /usr/bin/time -f "%e %M" -o /workspace/metrics.txt python3 /workspace/Solution.py`
         }
         else if(language === 'cpp'){
-            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-cpp /usr/bin/time -f "%e %M" -o /workspace/metrics.txt /workspace/execSolution`
+            executeCommand = `docker run --rm --name rce-${jobID} ${sandboxRestrictions} rce-sandbox-cpp /usr/bin/time -f "%e %M" -o /workspace/metrics.txt /workspace/execSolution`
         }
         else if(language === 'java'){
-            executeCommand = `docker run --rm ${sandboxRestrictions} rce-sandbox-java /usr/bin/time -f "%e %M" -o /workspace/metrics.txt java -cp /workspace Solution`
+            executeCommand = `docker run --rm --name rce-${jobID} ${sandboxRestrictions} rce-sandbox-java /usr/bin/time -f "%e %M" -o /workspace/metrics.txt java -cp /workspace Solution`
         }
         else{
             throw new Error(JSON.stringify({
@@ -171,7 +174,7 @@ const worker = new Worker('submission-queue' , async(job)=>{
 
         try{
             const inputPath = path.join(absoluteTempPath,'input.txt')
-            const result = await executorContainer(executeCommand , inputPath)
+            const result = await executorContainer(executeCommand , inputPath, jobID)
             stdout = result.stdout
             stderr = result.stderr
         }catch(executionError){

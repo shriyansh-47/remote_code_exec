@@ -5,7 +5,7 @@
 // It provides streams like child.stdin, child.stdout, child.stderr
 // which provide smooth functionality in case of interactive processes.
 
-import {spawn} from 'child_process'
+import {spawn, exec} from 'child_process'
 import fs from 'fs'
 
 /*
@@ -43,7 +43,7 @@ import fs from 'fs'
 */
 
 // commandStr -> contains docker command 
-export const executorContainer = (commandStr, inputPath) => {
+export const executorContainer = (commandStr, inputPath, jobID) => {
 
     // spawn is wrapped in a promise because inherently it is event
     // based function i.e. doesnt use async/await rather uses event
@@ -53,6 +53,7 @@ export const executorContainer = (commandStr, inputPath) => {
     return new Promise((resolve,reject) => {
         let stdout=''
         let stderr=''
+        let isTimeLimitExceeded = false;
         
         // { shell: true } lets us pass the entire command as a single string,
         // which is interpreted and executed by the shell.
@@ -89,16 +90,14 @@ export const executorContainer = (commandStr, inputPath) => {
         })
         
         // if the program doesnt complete its execution in 5 seconds
-        // child.kill kills the docker container that was spawned
-
-        // Note-> We havent implemented any internal time-limits on docker containers
-        // only time limit till now is the the setTimeouts' 5 sec lim & compilation time
-        // limit of 10 sec
+        // we forcefully kill the docker container by name
         const timer = setTimeout(() => {
-            child.kill('SIGKILL')
-            reject({
-                type:'TIME-LIMIT-EXCEEDED',
-                message:'Execution took too long (> 5sec)'
+            isTimeLimitExceeded = true;
+            exec(`docker rm -f rce-${jobID}`, () => {
+                reject({
+                    type:'TIME-LIMIT-EXCEEDED',
+                    message:'Execution took too long (> 5sec)'
+                })
             })
         } , 5000)
 
@@ -110,6 +109,9 @@ export const executorContainer = (commandStr, inputPath) => {
             // cancel the timer if the code executed before 5 sec
             clearTimeout(timer)
             
+            // If the timeout triggered `docker rm -f`, the container is killed with SIGKILL (137)
+            if(isTimeLimitExceeded) return; // Promise already rejected in setTimeout
+
             // Linux's OOM (out-of-memory) killer returns code = 137
             // when terminating a process consuming more memory than we specified
             if(code === 137){
