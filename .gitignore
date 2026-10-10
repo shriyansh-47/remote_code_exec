@@ -3,3 +3,4 @@ node_modules/
 temp/
 Backend_Implementation_Flow.md
 RCE_Engine_PRD.md
+dist/

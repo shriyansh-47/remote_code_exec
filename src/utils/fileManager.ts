@@ -4,7 +4,7 @@ import path from 'path' // for better working with \ & /
 const tempDirectoryPath = path.join(process.cwd(), 'temp')
 // process.cwd() -> absolute path to the current working directory
 
-const createTempFolder = async (jobID, language, srcCode, stdin) => {
+const createTempFolder = async (jobID: string, language: string, srcCode: string, stdin: string) => {
     // if(!fs.existsSync(tempDirectoryPath)){
     //     fs.mkdirSync(tempDirectoryPath)
     // }
@@ -41,7 +41,7 @@ const createTempFolder = async (jobID, language, srcCode, stdin) => {
 }
 
 
-const clearFolder = async (jobID) => {
+const clearFolder = async (jobID: string) => {
     const jobFolder = path.join(tempDirectoryPath , jobID)
 
     // if(fs.existsSync(jobFolder)){

@@ -6,6 +6,7 @@ import util from 'util'
 import path from 'path'
 import { executorContainer } from '../engine/executor.js'
 import { parseMetrics } from '../engine/metrics.js' 
+import { jobPayload } from '../queues/producer.js'
 
 /*
 This is the flow of a job till now in Phase-2 :-
@@ -40,14 +41,23 @@ Frontend ──POST──► Express
                     ▼
               GET /submissions/:id
 */
+
+/*
+The type chain:
+In validator.ts: stdin: z.string().optional() → so submissionPayload types stdin as string | undefined
+In producer.ts: jobPayload extends submissionPayload → so jobPayload.stdin is also string | undefined
+In worker.ts: job.data is jobPayload → so stdin is string | undefined
+But createTempFolder in fileManager.ts expects stdin: string (never undefined!)
+*/
 const execPromise = util.promisify(exec) // converting to a Promise so as to use async/await
 
 // creating an instance of Worker class that listens on the queue named
 // 'submission-queue' & runs the given processor function whenever a job is available
 // job object passed in the function is provided by BullMQ itself & not the one I returned in producer.js
-const worker = new Worker('submission-queue' , async(job)=>{
-    const {jobID , language, srcCode, stdin} = job.data 
+const worker = new Worker<jobPayload>('submission-queue' , async(job)=>{
+    const {jobID , language, srcCode, stdin = ''} = job.data 
     // .data returns the payload (jobID, language, srcCode) producer stored while adding the job to the queue
+    // stdin = '' is important, if stdin = udefined(i.e. no inputs) then stdin defaults to empty-string
 
     console.log(`Worker picked the job ${job.id}`)
 
@@ -92,7 +102,7 @@ const worker = new Worker('submission-queue' , async(job)=>{
                 // if the compilation fails Node itself
                 // attaches the outputs stderr & stdout to the compilationError object
                 // passed in the catch()
-            }catch(compilationError){
+            }catch(compilationError: any){
                 throw new Error(JSON.stringify({
                     type:'COMPILATION-ERROR',
                     message:compilationError.stderr || compilationError.message
@@ -171,10 +181,10 @@ const worker = new Worker('submission-queue' , async(job)=>{
 
         try{
             const inputPath = path.join(absoluteTempPath,'input.txt')
-            const result = await executorContainer(executeCommand , inputPath)
+            const result = await executorContainer(executeCommand , inputPath, jobID)
             stdout = result.stdout
             stderr = result.stderr
-        }catch(executionError){
+        }catch(executionError: any){
             throw new Error(JSON.stringify(executionError))
         }
 
@@ -201,7 +211,7 @@ const worker = new Worker('submission-queue' , async(job)=>{
         //      }
         // }
     }
-    catch(error){
+    catch(error: any){
         await clearFolder(jobID)
         throw new Error(error.stderr || error.message)
         // on error occurence BullMQ sees the thrown error and marks the state : failed
@@ -218,7 +228,11 @@ worker.on('completed' , (job) => {
 })
 
 worker.on('failed' , (job , error) => {
-    console.log(`Job ${job.id} failed : ${error.message}`)
+    console.log(`Job ${job?.id} failed : ${error.message}`)
+    // job?.id is called optional chaining — if job is undefined, 
+    // it returns undefined instead of crashing with Cannot read property 
+    // 'id' of undefined. So the log would print Job undefined failed : ... 
+    // instead of crashing your entire worker process!
 })
 
 export {worker}

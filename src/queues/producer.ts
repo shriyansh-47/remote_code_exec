@@ -1,14 +1,22 @@
 import {Queue} from 'bullmq'
 import {redisConnection} from '../config/redis.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
+import { submissionPayload } from '../middlewares/validator.js'
 
-const submissionQueue = new Queue('submission-queue' , {
+// using the submissionPayload from validator.js
+export interface jobPayload extends submissionPayload {
+    jobID: string
+}
+
+// BullMQ was written in TypeScript! We pass <JobPayload> to it so 
+// the queue knows exactly what kind of data it holds.
+const submissionQueue = new Queue<jobPayload>('submission-queue' , {
     connection : redisConnection
 })
 // names a section (BullMQ queue) inside the redis db (BullMQ uses redis data-struct to manage the queue)
 // where new jobs will be added and pending would be fetched from.
 
-const addJobToQueue = async (jobID, language, srcCode, stdin) =>{
+const addJobToQueue = async (jobID: string, language: submissionPayload["language"], srcCode: string, stdin: string) =>{
     // .add() returns metadata about the queue object like timestamp of addition,
     // payload data, internal ID, etc.
     const job = await submissionQueue.add("code-execution", {
@@ -30,7 +38,7 @@ const addJobToQueue = async (jobID, language, srcCode, stdin) =>{
 }
 
 // job.id == jobID so this is correct
-const getJobById = async(jobID) => {
+const getJobById = async(jobID: string) => {
     return await submissionQueue.getJob(jobID)
 }
 

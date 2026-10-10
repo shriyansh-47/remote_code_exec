@@ -2,10 +2,15 @@ import {v4 as uuidv4} from 'uuid'
 import { addJobToQueue, getJobById } from '../queues/producer.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import {apiError} from '../utils/apiError.js' 
+import { submissionPayload } from '../middlewares/validator.js'
+import { Request, Response } from 'express'
 
 
-const submitCode = asyncHandler( async (request,response) => {
-    const {language , srcCode, stdin=''} = request.body
+const submitCode = asyncHandler( async (request: Request,response: Response) => {
+
+    // Casting request.body as submissionPayload tells TS that langauge is python | cpp | java
+    // stdin and srcCode are strings
+    const {language , srcCode, stdin=''} = request.body as submissionPayload
     // stdin defaults to empty string if code requires no inputs from user
 
     if(!language){
@@ -39,8 +44,12 @@ const submitCode = asyncHandler( async (request,response) => {
 // intensive. More efficient alternative is websockets.
 
 
-const getSubmissionStatus = asyncHandler( async (request, response) => {
-    const {jobID} = request.params // gets jobID from URL of HTTP request
+const getSubmissionStatus = asyncHandler( async (request: Request, response: Response) => {
+
+    // type-assertion
+    // since request.params may return string[] | string | undefined
+    // therefore we need to assert explicitly that jobID is going to be string
+    const {jobID} = request.params as { jobID: string  } // gets jobID from URL of HTTP request
     
     const job = await getJobById(jobID) // returns the BullMQ object job
 
@@ -62,7 +71,9 @@ const getSubmissionStatus = asyncHandler( async (request, response) => {
         // this parsers back it to JSON format
         // better for Error-handling since this specifies the
         // kind of error too.
-        const parsedError = JSON.parse(job.failedReason)
+        const parsedError = JSON.parse(job.failedReason) as { type: string, message: string}
+        // type-asserting since we were stringifying this exact object in worker.js
+
         return response.status(200).json({
             jobID,
             status : parsedError.type,

@@ -5,7 +5,7 @@
 // It provides streams like child.stdin, child.stdout, child.stderr
 // which provide smooth functionality in case of interactive processes.
 
-import {spawn} from 'child_process'
+import {spawn, exec} from 'child_process'
 import fs from 'fs'
 
 /*
@@ -42,8 +42,22 @@ import fs from 'fs'
              resolve        reject
 */
 
+interface executionOutput {
+    stdout: string;
+    stderr: string;
+}
+interface executionError {
+    type: 'TIME-LIMIT-EXCEEDED' | 'MEMORY-LIMIT-EXCEEDED' | 'RUNTIME-ERROR' | 'COMPILATION-ERROR';
+    message: string;
+}
+// Now TypeScript knows that this Promise will either resolve with an ExecutionResult,
+// or it will reject. (TypeScript doesn't type-check Promise rejections directly, 
+// but having the ExecutionError interface is amazing for documenting it).
+
 // commandStr -> contains docker command 
-export const executorContainer = (commandStr, inputPath) => {
+// This function returns a Promise which, if successful, resolves to an ExecutionResult.
+export const executorContainer = (commandStr: string, inputPath: string, jobID:string): Promise<executionOutput> => {
+    // undefined because inputfile is optional so when no fileinput then inputpath is undefined
 
     // spawn is wrapped in a promise because inherently it is event
     // based function i.e. doesnt use async/await rather uses event
@@ -53,6 +67,7 @@ export const executorContainer = (commandStr, inputPath) => {
     return new Promise((resolve,reject) => {
         let stdout=''
         let stderr=''
+        let isTimeLimitExceeded = false;
         
         // { shell: true } lets us pass the entire command as a single string,
         // which is interpreted and executed by the shell.
@@ -77,28 +92,27 @@ export const executorContainer = (commandStr, inputPath) => {
             })
         }
 
-        child.stdout.on('data', (data)=>{
+        // Note this buffer thingy, data is a Buffer in Node.js streams
+        child.stdout.on('data', (data: Buffer)=>{
             // since stdout is also a stream so it may send
             // outputs in byte chunks so we keep appending as 
             // the output arrives.
             stdout+=data.toString()
         })
 
-        child.stderr.on('data', (data) => {
+        child.stderr.on('data', (data: Buffer) => {
             stderr+=data.toString()
         })
         
         // if the program doesnt complete its execution in 5 seconds
-        // child.kill kills the docker container that was spawned
-
-        // Note-> We havent implemented any internal time-limits on docker containers
-        // only time limit till now is the the setTimeouts' 5 sec lim & compilation time
-        // limit of 10 sec
+        // we forcefully kill the docker container by name
         const timer = setTimeout(() => {
-            child.kill('SIGKILL')
-            reject({
-                type:'TIME-LIMIT-EXCEEDED',
-                message:'Execution took too long (> 5sec)'
+            isTimeLimitExceeded = true;
+            exec(`docker rm -f rce-${jobID}`, () => {
+                reject({
+                    type:'TIME-LIMIT-EXCEEDED',
+                    message:'Execution took too long (> 5sec)'
+                })
             })
         } , 5000)
 
@@ -106,10 +120,16 @@ export const executorContainer = (commandStr, inputPath) => {
         // its stdio streams have been closed.
         // code == 0 -> success
         // else some kind of error
-        child.on('close' , (code)=>{
+
+        // Node's spawn strictly types the exit code as number | null. 
+        // It can be null if the process was completely abruptly killed by the OS (like a power outage or a SIGKILL before it could finish shutting down).
+        child.on('close' , (code: number | null)=>{
             // cancel the timer if the code executed before 5 sec
             clearTimeout(timer)
             
+            // If the timeout triggered `docker rm -f`, the container is killed with SIGKILL (137)
+            if(isTimeLimitExceeded) return; // Promise already rejected in setTimeout
+
             // Linux's OOM (out-of-memory) killer returns code = 137
             // when terminating a process consuming more memory than we specified
             if(code === 137){
