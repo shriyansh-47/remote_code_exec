@@ -4,7 +4,7 @@ import { asyncHandler } from '../utils/asyncHandler.js'
 import {apiError} from '../utils/apiError.js' 
 import { submissionPayload } from '../middlewares/validator.js'
 import { Request, Response } from 'express'
-
+import { Submission } from '../models/submission.model.js'
 
 const submitCode = asyncHandler( async (request: Request,response: Response) => {
 
@@ -23,6 +23,15 @@ const submitCode = asyncHandler( async (request: Request,response: Response) => 
     const jobID = uuidv4()
 
     await addJobToQueue(jobID, language, srcCode, stdin)
+
+    // adding entry to the db
+    const submission = await Submission.create({
+        jobID,
+        language,
+        srcCode,
+        stdin,
+        status: 'QUEUED'
+    })
 
     return response.status(202).json({
         jobID,

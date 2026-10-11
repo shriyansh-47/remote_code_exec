@@ -7,6 +7,7 @@ import path from 'path'
 import { executorContainer } from '../engine/executor.js'
 import { parseMetrics } from '../engine/metrics.js' 
 import { jobPayload } from '../queues/producer.js'
+import { Submission } from '../models/submission.model.js'
 
 /*
 This is the flow of a job till now in Phase-2 :-
@@ -84,6 +85,14 @@ const worker = new Worker<jobPayload>('submission-queue' , async(job)=>{
         // 2. Execution Container -> If compilation success, spin this container
         // it is heavily restricted sandboxed container.
 
+        // processing :-
+        await Submission.updateOne(
+            {jobID},
+            {$set: {
+                status: 'PROCESSING'
+            }}
+        )
+        
         let stdout=''
         let stderr=''
         if (language === 'cpp' || language === 'java'){
@@ -194,6 +203,21 @@ const worker = new Worker<jobPayload>('submission-queue' , async(job)=>{
 
         await clearFolder(jobID)
         
+        // updating the db entries
+        // updateOne doesnt return the document after updating  
+        await Submission.updateOne(
+            {jobID},
+            {$set: {
+                status: 'COMPLETED',
+                metrics: {
+                    executionTime,
+                    memoryUsage
+                },
+                stdout,
+                stderr
+            }}
+        )
+
         return {
             stdout,
             stderr,
@@ -213,7 +237,24 @@ const worker = new Worker<jobPayload>('submission-queue' , async(job)=>{
     }
     catch(error: any){
         await clearFolder(jobID)
-        throw new Error(error.stderr || error.message)
+
+        let errorType: string = 'RUNTIME-ERROR'
+        let errorMessage: string = 'Error while processing.'
+
+        try{
+            let parsedError = JSON.parse(error.message)
+            errorType = parsedError.type
+            errorMessage = parsedError.message
+        }catch(_){}
+
+        await Submission.updateOne(
+            {jobID},
+            {$set: {
+                status: errorType,
+                stderr: errorMessage
+            }}
+        )
+        throw new Error(error.message)
         // on error occurence BullMQ sees the thrown error and marks the state : failed
     }
 },
