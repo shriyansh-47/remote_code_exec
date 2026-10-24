@@ -2,7 +2,7 @@ import {z} from 'zod' // a library that can be used for schema definition and va
 import {apiError} from '../utils/apiError.js'
 import { Request, Response, NextFunction } from 'express'
 
-// z.object defines the schema of request.body must be an object 
+// z.object defines that the schema of request.body must be an object 
 // having fields language, srcCode, stdin(optional)
 const submissionSchema = z.object({
     language : z.enum(['python','cpp','java'] , {
